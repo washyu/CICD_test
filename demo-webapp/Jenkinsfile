@@ -1,0 +1,34 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = "your-registry-url"
+        TAG = "${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f backend/Dockerfile .'
+                sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f frontend/Dockerfile .'
+            }
+        }
+        
+        stage('Push') {
+            steps {
+                sh 'docker push ${REGISTRY}/demo-webapp-backend:${TAG}'
+                sh 'docker push ${REGISTRY}/demo-webapp-frontend:${TAG}'
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                sh """
+                    sed -i 's|\${REGISTRY}|${REGISTRY}|g' k8s/webapp.yaml
+                    sed -i 's|\${TAG}|${TAG}|g' k8s/webapp.yaml
+                    kubectl apply -f k8s/
+                """
+            }
+        }
+    }
+}
