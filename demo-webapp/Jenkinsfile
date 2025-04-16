@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        REGISTRY = "your-registry-url"
+        REGISTRY = "aiserver:5000"
         TAG = "${BUILD_NUMBER}"
         DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
         DOCKER_USER = "${DOCKER_CREDENTIALS_USR}"
