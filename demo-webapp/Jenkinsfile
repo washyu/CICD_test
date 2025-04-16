@@ -27,8 +27,9 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f backend/Dockerfile .'
-                sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f frontend/Dockerfile .'
+                sh 'ls -la'
+                sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f demo-webapp/backend/Dockerfile demo-webapp/'
+                sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f demo-webapp/frontend/Dockerfile demo-webapp/'
             }
         }
 
@@ -45,9 +46,9 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
-                        sed -i 's|\${REGISTRY}|${REGISTRY}|g' k8s/webapp.yaml
-                        sed -i 's|\${TAG}|${TAG}|g' k8s/webapp.yaml
-                        kubectl --kubeconfig=${KUBECONFIG} apply -f k8s/
+                        sed -i 's|\${REGISTRY}|${REGISTRY}|g' demo-webapp/k8s/webapp.yaml
+                        sed -i 's|\${TAG}|${TAG}|g' demo-webapp/k8s/webapp.yaml
+                        kubectl --kubeconfig=${KUBECONFIG} apply -f demo-webapp/k8s/
                     """
                 }
             }

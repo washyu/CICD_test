@@ -9,7 +9,7 @@ COPY package*.json ./
 RUN npm install --production
 
 # Copy backend code
-COPY backend/ ./backend/
+COPY backend/ ./
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -19,4 +19,4 @@ ENV PORT=5000
 EXPOSE 5000
 
 # Start the application
-CMD ["node", "backend/server.js"]
+CMD ["node", "server.js"]
