@@ -1,33 +1,55 @@
 pipeline {
-    agent any
-    
+    agent {
+        docker {
+            image 'docker:dind'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -v ${WORKSPACE}:/workspace -w /workspace'
+        }
+    }
+
     environment {
         REGISTRY = "your-registry-url"
         TAG = "${BUILD_NUMBER}"
+        DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
+        DOCKER_USER = "${DOCKER_CREDENTIALS_USR}"
+        DOCKER_PASSWORD = "${DOCKER_CREDENTIALS_PSW}"
     }
-    
+
     stages {
+        stage('Setup') {
+            steps {
+                sh 'apk add --no-cache curl'
+                sh 'curl -LO "https://dl.k8s.io/release/stable.txt"'
+                sh 'curl -LO "https://dl.k8s.io/release/$(cat stable.txt)/bin/linux/amd64/kubectl"'
+                sh 'chmod +x kubectl'
+                sh 'mv kubectl /usr/local/bin/'
+            }
+        }
+
         stage('Build') {
             steps {
                 sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f backend/Dockerfile .'
                 sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f frontend/Dockerfile .'
             }
         }
-        
+
         stage('Push') {
             steps {
+                sh 'echo "Logging into Docker registry..."'
+                sh 'docker login ${REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}'
                 sh 'docker push ${REGISTRY}/demo-webapp-backend:${TAG}'
                 sh 'docker push ${REGISTRY}/demo-webapp-frontend:${TAG}'
             }
         }
-        
+
         stage('Deploy') {
             steps {
-                sh """
-                    sed -i 's|\${REGISTRY}|${REGISTRY}|g' k8s/webapp.yaml
-                    sed -i 's|\${TAG}|${TAG}|g' k8s/webapp.yaml
-                    kubectl apply -f k8s/
-                """
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        sed -i 's|\${REGISTRY}|${REGISTRY}|g' k8s/webapp.yaml
+                        sed -i 's|\${TAG}|${TAG}|g' k8s/webapp.yaml
+                        kubectl --kubeconfig=${KUBECONFIG} apply -f k8s/
+                    """
+                }
             }
         }
     }

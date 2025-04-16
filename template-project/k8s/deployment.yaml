@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{PROJECT_NAME}}
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{PROJECT_NAME}}
+  template:
+    metadata:
+      labels:
+        app: {{PROJECT_NAME}}
+    spec:
+      containers:
+      - name: backend
+        image: {{REGISTRY}}/{{PROJECT_NAME}}-backend:{{TAG}}
+        ports:
+        - containerPort: 5000
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: DB_HOST
+          value: postgres-service
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{PROJECT_NAME}}-db-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{PROJECT_NAME}}-db-credentials
+              key: password
+        - name: DB_NAME
+          value: app_db
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+      - name: frontend
+        image: {{REGISTRY}}/{{PROJECT_NAME}}-frontend:{{TAG}}
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{PROJECT_NAME}}-service
+  namespace: default
+spec:
+  selector:
+    app: {{PROJECT_NAME}}
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{PROJECT_NAME}}-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  rules:
+  - host: {{PROJECT_NAME}}.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{PROJECT_NAME}}-service
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - {{PROJECT_NAME}}.your-domain.com
+    secretName: {{PROJECT_NAME}}-tls

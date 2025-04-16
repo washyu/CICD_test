@@ -1,0 +1,15 @@
+name: "Docker CI/CD Template"
+description: "A template project with pre-configured CI/CD pipeline using Docker-in-Docker deployment"
+topics:
+  - docker
+  - ci-cd
+  - kubernetes
+  - jenkins
+  - template
+files:
+  - "README.md"
+  - "Jenkinsfile"
+  - "docker-compose.yml"
+  - "k8s/"
+  - "backend/"
+  - "frontend/"

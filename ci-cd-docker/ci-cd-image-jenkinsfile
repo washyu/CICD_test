@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = "your-registry-url"
+        IMAGE_NAME = "ci-cd-image"
+        VERSION = "1.0.${BUILD_NUMBER}"
+        DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                sh 'docker build -t ${REGISTRY}/${IMAGE_NAME}:${VERSION} .'
+                sh 'docker tag ${REGISTRY}/${IMAGE_NAME}:${VERSION} ${REGISTRY}/${IMAGE_NAME}:latest'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                // Run a container with the image and verify tools are working
+                sh '''
+                docker run --rm ${REGISTRY}/${IMAGE_NAME}:${VERSION} kubectl version --client
+                docker run --rm ${REGISTRY}/${IMAGE_NAME}:${VERSION} helm version --client
+                docker run --rm ${REGISTRY}/${IMAGE_NAME}:${VERSION} aws --version
+                '''
+            }
+        }
+        
+        stage('Push') {
+            steps {
+                sh 'echo ${DOCKER_CREDENTIALS_PSW} | docker login ${REGISTRY} -u ${DOCKER_CREDENTIALS_USR} --password-stdin'
+                sh 'docker push ${REGISTRY}/${IMAGE_NAME}:${VERSION}'
+                sh 'docker push ${REGISTRY}/${IMAGE_NAME}:latest'
+            }
+        }
+        
+        stage('Document') {
+            steps {
+                // Update a versions.md file with the new version
+                sh '''
+                echo "| ${VERSION} | $(date) | ${BUILD_URL} |" >> versions.md
+                git config --global user.email "ci@example.com"
+                git config --global user.name "CI Bot"
+                git add versions.md
+                git commit -m "Add version ${VERSION}"
+                git push origin main
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'docker logout ${REGISTRY}'
+        }
+    }
+}

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Get API URL from environment or use default
+const API_URL = process.env.REACT_APP_API_URL || '/api';
+
 function App() {
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -10,15 +13,23 @@ function App() {
   }, []);
 
   const fetchNotes = async () => {
-    const response = await axios.get('http://localhost:5000/api/notes');
-    setNotes(response.data);
+    try {
+      const response = await axios.get(`${API_URL}/notes`);
+      setNotes(response.data);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+    }
   };
 
   const addNote = async (e) => {
     e.preventDefault();
-    await axios.post('http://localhost:5000/api/notes', { content: newNote });
-    setNewNote('');
-    fetchNotes();
+    try {
+      await axios.post(`${API_URL}/notes`, { content: newNote });
+      setNewNote('');
+      fetchNotes();
+    } catch (error) {
+      console.error('Error adding note:', error);
+    }
   };
 
   return (

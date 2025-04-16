@@ -1,0 +1,20 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package.json files
+COPY backend/package*.json ./backend/
+
+# Install dependencies
+WORKDIR /app/backend
+RUN npm install
+
+# Set environment variables
+ENV NODE_ENV=development
+ENV PORT=5000
+
+# Expose the port
+EXPOSE 5000
+
+# Start the application in development mode
+CMD ["npm", "run", "dev"]
