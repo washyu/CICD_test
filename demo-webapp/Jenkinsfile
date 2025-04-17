@@ -43,6 +43,9 @@ pipeline {
         }
 
         stage('Deploy') {
+            when {
+                expression { return fileExists('/var/jenkins_home/credentials/kubeconfig') }
+            }
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
