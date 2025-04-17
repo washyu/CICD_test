@@ -6,6 +6,13 @@ pipeline {
         }
     }
 
+    triggers {
+        // Poll SCM every minute for changes
+        pollSCM('* * * * *')
+        // Also build PRs
+        githubPullRequests()
+    }
+
     environment {
         REGISTRY = "aiserver:5000"
         TAG = "${BUILD_NUMBER}"
@@ -40,7 +47,10 @@ pipeline {
 
         stage('Functional Tests') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    expression { return env.CHANGE_TARGET == 'main' }
+                }
             }
             steps {
                 sh 'apk add --no-cache chromium'
@@ -63,6 +73,13 @@ pipeline {
         }
 
         stage('Push') {
+            // Only push images for main branch or PR to main
+            when {
+                anyOf {
+                    branch 'main'
+                    expression { return env.CHANGE_TARGET == 'main' }
+                }
+            }
             steps {
                 sh 'echo "Logging into Docker registry..."'
                 sh 'docker login ${REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}'
@@ -72,8 +89,12 @@ pipeline {
         }
 
         stage('Deploy') {
+            // Only deploy from main branch, not PRs
             when {
-                expression { return fileExists('/var/jenkins_home/credentials/kubeconfig') }
+                allOf {
+                    branch 'main'
+                    expression { return fileExists('/var/jenkins_home/credentials/kubeconfig') }
+                }
             }
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
