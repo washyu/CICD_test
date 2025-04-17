@@ -20,6 +20,7 @@ pipeline {
 
     parameters {
         string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Branch to build')
+        booleanParam(name: 'DEPLOY_TO_PROD', defaultValue: false, description: 'Deploy to production after successful staging tests')
     }
 
     environment {
@@ -30,6 +31,12 @@ pipeline {
         DOCKER_PASSWORD = "${DOCKER_CREDENTIALS_PSW}"
         // Use the parameter if the build is triggered manually, otherwise use the branch name from SCM
         BRANCH_TO_BUILD = "${params.BRANCH_NAME ?: env.BRANCH_NAME}"
+        // Environment names
+        STAGING_NAMESPACE = "webapp-staging"
+        PROD_NAMESPACE = "webapp-prod"
+        // URLs for testing
+        STAGING_URL = "http://webapp-staging.example.com"
+        PROD_URL = "http://webapp-prod.example.com"
     }
 
     stages {
@@ -80,12 +87,61 @@ pipeline {
             }
         }
 
-        stage('Functional Tests') {
+        stage('Build') {
+            // Only proceed if unit and integration tests pass
             when {
-                anyOf {
-                    expression { return env.BRANCH_TO_BUILD == 'main' }
-                    expression { return env.CHANGE_TARGET == 'main' }
+                expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
+            }
+            steps {
+                sh 'ls -la'
+                sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f demo-webapp/backend/Dockerfile demo-webapp/'
+                sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f demo-webapp/frontend/Dockerfile demo-webapp/'
+            }
+        }
+
+        stage('Push to Registry') {
+            // Always push images if build succeeds
+            steps {
+                sh 'echo "Logging into Docker registry..."'
+                sh 'docker login ${REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}'
+                sh 'docker push ${REGISTRY}/demo-webapp-backend:${TAG}'
+                sh 'docker push ${REGISTRY}/demo-webapp-frontend:${TAG}'
+            }
+        }
+
+        stage('Deploy to Staging') {
+            // Deploy to staging for testing
+            when {
+                expression { return fileExists('/var/jenkins_home/credentials/kubeconfig') }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        # Create namespace if it doesn't exist
+                        kubectl --kubeconfig=${KUBECONFIG} create namespace ${STAGING_NAMESPACE} --dry-run=client -o yaml | kubectl --kubeconfig=${KUBECONFIG} apply -f -
+
+                        # Apply staging-specific configurations
+                        sed -i 's|\${REGISTRY}|${REGISTRY}|g' demo-webapp/k8s/webapp.yaml
+                        sed -i 's|\${TAG}|${TAG}|g' demo-webapp/k8s/webapp.yaml
+                        sed -i 's|\${NAMESPACE}|${STAGING_NAMESPACE}|g' demo-webapp/k8s/webapp.yaml
+
+                        # Deploy to staging namespace
+                        kubectl --kubeconfig=${KUBECONFIG} apply -f demo-webapp/k8s/ -n ${STAGING_NAMESPACE}
+
+                        # Wait for deployment to complete
+                        kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/webapp-backend -n ${STAGING_NAMESPACE} --timeout=300s
+                        kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/webapp-frontend -n ${STAGING_NAMESPACE} --timeout=300s
+                    """
                 }
+
+                // Print staging URL for testing
+                echo "Staging deployment complete. Application available at: ${STAGING_URL}"
+            }
+        }
+
+        stage('Functional Tests on Staging') {
+            when {
+                expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
             }
             steps {
                 sh '''
@@ -96,6 +152,7 @@ pipeline {
                     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
                     export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
                     export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+                    export BASE_URL=${STAGING_URL}
 
                     # Install Playwright without browser download
                     cd demo-webapp && npm install && npm install -D @playwright/test
@@ -103,9 +160,9 @@ pipeline {
                     # Create directory for Playwright JUnit reports
                     mkdir -p demo-webapp/playwright-junit
 
-                    # Run tests with system Chromium and capture exit code
+                    # Run tests against staging environment
                     cd demo-webapp
-                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium
+                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium --config=playwright.config.js
                     TEST_EXIT_CODE=$?
 
                     # Print test report contents for debugging
@@ -131,49 +188,113 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            // Only proceed if tests pass
+        stage('Create PR to Production') {
             when {
-                expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
-            steps {
-                sh 'ls -la'
-                sh 'docker build -t ${REGISTRY}/demo-webapp-backend:${TAG} -f demo-webapp/backend/Dockerfile demo-webapp/'
-                sh 'docker build -t ${REGISTRY}/demo-webapp-frontend:${TAG} -f demo-webapp/frontend/Dockerfile demo-webapp/'
-            }
-        }
-
-        stage('Push') {
-            // Only push images for main branch or PR to main
-            when {
-                anyOf {
+                allOf {
+                    expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
                     expression { return env.BRANCH_TO_BUILD == 'main' }
-                    expression { return env.CHANGE_TARGET == 'main' }
                 }
             }
             steps {
-                sh 'echo "Logging into Docker registry..."'
-                sh 'docker login ${REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}'
-                sh 'docker push ${REGISTRY}/demo-webapp-backend:${TAG}'
-                sh 'docker push ${REGISTRY}/demo-webapp-frontend:${TAG}'
+                script {
+                    def prBranch = "deploy-to-prod-${BUILD_NUMBER}"
+
+                    sh """
+                        # Create a branch for the PR
+                        git checkout -b ${prBranch}
+
+                        # Update version in a file to track the deployment
+                        echo "version: ${BUILD_NUMBER}" > version.txt
+                        git add version.txt
+
+                        # Commit and push
+                        git commit -m "Deploy to production - build #${BUILD_NUMBER}"
+                        git push origin ${prBranch}
+
+                        # Create PR using GitHub CLI if available, otherwise print instructions
+                        if command -v gh &> /dev/null; then
+                            gh pr create --base prod --head ${prBranch} --title "Deploy to production - build #${BUILD_NUMBER}" --body "This PR deploys build #${BUILD_NUMBER} to production after successful staging tests."
+                        else
+                            echo "Please create a PR from branch ${prBranch} to prod branch manually."
+                            echo "PR Title: Deploy to production - build #${BUILD_NUMBER}"
+                            echo "PR Body: This PR deploys build #${BUILD_NUMBER} to production after successful staging tests."
+                        fi
+                    """
+                }
             }
         }
 
-        stage('Deploy') {
-            // Only deploy from main branch, not PRs
+        stage('Deploy to Production') {
             when {
                 allOf {
-                    expression { return env.BRANCH_TO_BUILD == 'main' }
-                    expression { return env.CHANGE_TARGET == null } // Not a PR
+                    expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
+                    expression { return params.DEPLOY_TO_PROD }
                     expression { return fileExists('/var/jenkins_home/credentials/kubeconfig') }
                 }
             }
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        # Create namespace if it doesn't exist
+                        kubectl --kubeconfig=${KUBECONFIG} create namespace ${PROD_NAMESPACE} --dry-run=client -o yaml | kubectl --kubeconfig=${KUBECONFIG} apply -f -
+
+                        # Apply production-specific configurations
                         sed -i 's|\${REGISTRY}|${REGISTRY}|g' demo-webapp/k8s/webapp.yaml
                         sed -i 's|\${TAG}|${TAG}|g' demo-webapp/k8s/webapp.yaml
-                        kubectl --kubeconfig=${KUBECONFIG} apply -f demo-webapp/k8s/
+                        sed -i 's|\${NAMESPACE}|${PROD_NAMESPACE}|g' demo-webapp/k8s/webapp.yaml
+
+                        # Deploy to production namespace
+                        kubectl --kubeconfig=${KUBECONFIG} apply -f demo-webapp/k8s/ -n ${PROD_NAMESPACE}
+
+                        # Wait for deployment to complete
+                        kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/webapp-backend -n ${PROD_NAMESPACE} --timeout=300s
+                        kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/webapp-frontend -n ${PROD_NAMESPACE} --timeout=300s
+                    """
+                }
+
+                // Print production URL
+                echo "Production deployment complete. Application available at: ${PROD_URL}"
+            }
+        }
+
+        stage('Verification Tests on Production') {
+            when {
+                allOf {
+                    expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
+                    expression { return params.DEPLOY_TO_PROD }
+                }
+            }
+            steps {
+                sh '''
+                    # Set environment variables for Playwright
+                    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+                    export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+                    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+                    export BASE_URL=${PROD_URL}
+
+                    # Run smoke tests against production
+                    cd demo-webapp
+                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium --config=playwright.config.js --grep="@smoke"
+                '''
+            }
+        }
+
+        stage('Update Traffic Routing') {
+            when {
+                allOf {
+                    expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
+                    expression { return params.DEPLOY_TO_PROD }
+                }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        # Update ingress or service to route traffic to new deployment
+                        kubectl --kubeconfig=${KUBECONFIG} apply -f demo-webapp/k8s/ingress.yaml -n ${PROD_NAMESPACE}
+
+                        # Verify traffic is flowing to new deployment
+                        echo "Traffic now routing to new deployment. Verifying..."
+                        curl -s ${PROD_URL}/health | grep -q 'ok' && echo "Traffic routing verified!" || echo "Traffic routing verification failed!"
                     """
                 }
             }
