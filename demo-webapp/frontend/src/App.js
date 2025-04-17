@@ -33,6 +33,15 @@ function App() {
     }
   };
 
+  const deleteNote = async (id) => {
+    try {
+      await axios.delete(`${API_URL}/notes/${id}`);
+      fetchNotes();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+    }
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -62,7 +71,14 @@ function App() {
             <ul className="notes-list">
               {notes.map((note, index) => (
                 <li key={note.id || index} className="note-item">
-                  {note.content}
+                  <span>{note.content}</span>
+                  <button
+                    onClick={() => deleteNote(note.id)}
+                    className="delete-btn"
+                    aria-label="Delete note"
+                  >
+                    Delete
+                  </button>
                 </li>
               ))}
             </ul>

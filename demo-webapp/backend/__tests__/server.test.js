@@ -22,13 +22,13 @@ describe('API Endpoints', () => {
         { id: 1, content: 'Test note 1' },
         { id: 2, content: 'Test note 2' }
       ];
-      
+
       mockDb.query.mockImplementation((query, callback) => {
         callback(null, mockNotes);
       });
 
       const response = await request(app).get('/api/notes');
-      
+
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockNotes);
       expect(mockDb.query).toHaveBeenCalledWith('SELECT * FROM notes', expect.any(Function));
@@ -41,7 +41,7 @@ describe('API Endpoints', () => {
       });
 
       const response = await request(app).get('/api/notes');
-      
+
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error');
     });
@@ -51,7 +51,7 @@ describe('API Endpoints', () => {
     it('should create a new note', async () => {
       const newNote = { content: 'New test note' };
       const mockResult = { insertId: 3 };
-      
+
       mockDb.query.mockImplementation((query, values, callback) => {
         callback(null, mockResult);
       });
@@ -59,7 +59,7 @@ describe('API Endpoints', () => {
       const response = await request(app)
         .post('/api/notes')
         .send(newNote);
-      
+
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ id: 3, content: 'New test note' });
       expect(mockDb.query).toHaveBeenCalledWith(
@@ -73,7 +73,7 @@ describe('API Endpoints', () => {
       const response = await request(app)
         .post('/api/notes')
         .send({});
-      
+
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error', 'Content is required');
       expect(mockDb.query).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe('API Endpoints', () => {
 
     it('should handle database errors', async () => {
       const newNote = { content: 'New test note' };
-      
+
       mockDb.query.mockImplementation((query, values, callback) => {
         callback(new Error('Database error'), null);
       });
@@ -89,7 +89,55 @@ describe('API Endpoints', () => {
       const response = await request(app)
         .post('/api/notes')
         .send(newNote);
-      
+
+      expect(response.status).toBe(500);
+      expect(response.body).toHaveProperty('error');
+    });
+  });
+
+  describe('DELETE /api/notes/:id', () => {
+    it('should delete a note', async () => {
+      const noteId = 1;
+      const mockResult = { affectedRows: 1 };
+
+      mockDb.query.mockImplementation((query, values, callback) => {
+        callback(null, mockResult);
+      });
+
+      const response = await request(app).delete(`/api/notes/${noteId}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Note deleted successfully' });
+      expect(mockDb.query).toHaveBeenCalledWith(
+        'DELETE FROM notes WHERE id = ?',
+        [noteId.toString()],
+        expect.any(Function)
+      );
+    });
+
+    it('should return 404 if note not found', async () => {
+      const noteId = 999;
+      const mockResult = { affectedRows: 0 };
+
+      mockDb.query.mockImplementation((query, values, callback) => {
+        callback(null, mockResult);
+      });
+
+      const response = await request(app).delete(`/api/notes/${noteId}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error', 'Note not found');
+    });
+
+    it('should handle database errors', async () => {
+      const noteId = 1;
+
+      mockDb.query.mockImplementation((query, values, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app).delete(`/api/notes/${noteId}`);
+
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error');
     });

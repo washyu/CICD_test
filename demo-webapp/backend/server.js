@@ -44,6 +44,26 @@ const createApp = (db) => {
     });
   });
 
+  app.delete('/api/notes/:id', (req, res) => {
+    const id = req.params.id;
+    if (!id) {
+      return res.status(400).json({ error: 'Note ID is required' });
+    }
+
+    db.query('DELETE FROM notes WHERE id = ?', [id], (err, result) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Note not found' });
+      }
+
+      res.json({ message: 'Note deleted successfully' });
+    });
+  });
+
   return app;
 };
 
