@@ -48,13 +48,22 @@ pipeline {
                 sh 'apk add --no-cache nodejs npm'
                 sh 'cd demo-webapp/backend && npm install && npm test'
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    sh 'cd demo-webapp/frontend && npm install && npm test -- --watchAll=false'
+                    sh '''
+                        cd demo-webapp/frontend
+                        npm install
+                        npm install --save-dev jest-junit
+                        mkdir -p junit-reports
+                        npm run test:ci -- --watchAll=false
+                    '''
                 }
             }
             post {
                 always {
                     catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                        junit allowEmptyResults: true, testResults: 'demo-webapp/backend/junit.xml'
+                        junit(
+                            allowEmptyResults: true,
+                            testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml'
+                        )
                     }
                 }
             }
@@ -81,6 +90,9 @@ pipeline {
                         # Install Playwright without browser download
                         cd demo-webapp && npm install && npm install -D @playwright/test
 
+                        # Create directory for Playwright JUnit reports
+                        mkdir -p demo-webapp/playwright-junit
+
                         # Run tests with system Chromium
                         cd demo-webapp && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium || echo "Playwright tests failed but continuing build"
                     '''
@@ -89,7 +101,10 @@ pipeline {
             post {
                 always {
                     catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                        junit allowEmptyResults: true, testResults: 'demo-webapp/playwright-report/junit.xml'
+                        junit(
+                            allowEmptyResults: true,
+                            testResults: 'demo-webapp/playwright-junit/results.xml'
+                        )
                     }
                 }
             }
@@ -153,6 +168,16 @@ pipeline {
         }
         always {
             echo "Build completed for branch: ${env.BRANCH_TO_BUILD}"
+
+            // Publish all test reports in one place
+            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                junit(
+                    allowEmptyResults: true,
+                    testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml, demo-webapp/playwright-junit/results.xml',
+                    skipPublishingChecks: false,
+                    skipMarkingBuildUnstable: false
+                )
+            }
         }
     }
 }
