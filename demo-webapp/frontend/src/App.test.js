@@ -1,8 +1,16 @@
 import { render, screen } from '@testing-library/react';
+// Mock axios to avoid actual API calls
+jest.mock('axios', () => ({
+  get: jest.fn(() => Promise.resolve({ data: [] })),
+  post: jest.fn(() => Promise.resolve({ data: {} })),
+  delete: jest.fn(() => Promise.resolve({ data: {} }))
+}));
+
+// Import App after mocking dependencies
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders Demo Notes App title', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  const titleElement = screen.getByText(/Demo Notes App/i);
+  expect(titleElement).toBeInTheDocument();
 });
