@@ -25,17 +25,30 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Unit and Integration Tests') {
             steps {
-                sh 'apk add --no-cache nodejs npm chromium'
+                sh 'apk add --no-cache nodejs npm'
                 sh 'cd demo-webapp/backend && npm install && npm test'
                 sh 'cd demo-webapp/frontend && npm install && npm test -- --watchAll=false'
+            }
+            post {
+                always {
+                    junit 'demo-webapp/backend/junit.xml'
+                }
+            }
+        }
+
+        stage('Functional Tests') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh 'apk add --no-cache chromium'
                 sh 'cd demo-webapp && npm install && npx playwright install --with-deps chromium'
                 sh 'cd demo-webapp && npx playwright test --browser=chromium'
             }
             post {
                 always {
-                    junit 'demo-webapp/backend/junit.xml'
                     junit 'demo-webapp/playwright-report/junit.xml'
                 }
             }
