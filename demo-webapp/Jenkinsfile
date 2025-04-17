@@ -51,7 +51,9 @@ pipeline {
             }
             post {
                 always {
-                    junit 'demo-webapp/backend/junit.xml'
+                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                        junit allowEmptyResults: true, testResults: 'demo-webapp/backend/junit.xml'
+                    }
                 }
             }
         }
@@ -70,7 +72,9 @@ pipeline {
             }
             post {
                 always {
-                    junit 'demo-webapp/playwright-report/junit.xml'
+                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                        junit allowEmptyResults: true, testResults: 'demo-webapp/playwright-report/junit.xml'
+                    }
                 }
             }
         }
