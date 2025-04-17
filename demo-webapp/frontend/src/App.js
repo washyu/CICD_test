@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import './App.css';
 
 // Get API URL from environment or use default
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -34,20 +35,40 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Demo Notes App</h1>
-      <form onSubmit={addNote}>
-        <input
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Enter a new note"
-        />
-        <button type="submit">Add Note</button>
-      </form>
-      <ul>
-        {notes.map(note => (
-          <li key={note.id}>{note.content}</li>
-        ))}
-      </ul>
+      <header className="App-header">
+        <h1>Demo Notes App</h1>
+      </header>
+      <main>
+        <section className="form-section">
+          <h2>Add New Note</h2>
+          <form onSubmit={addNote}>
+            <div className="form-group">
+              <input
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Enter a new note"
+                required
+              />
+              <button type="submit">Add Note</button>
+            </div>
+          </form>
+        </section>
+
+        <section className="notes-section">
+          <h2>Notes</h2>
+          {notes.length === 0 ? (
+            <p>No notes found. Add your first note above.</p>
+          ) : (
+            <ul className="notes-list">
+              {notes.map((note, index) => (
+                <li key={note.id || index} className="note-item">
+                  {note.content}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
