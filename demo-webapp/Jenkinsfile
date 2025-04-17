@@ -47,24 +47,35 @@ pipeline {
             steps {
                 sh 'apk add --no-cache nodejs npm'
                 sh 'cd demo-webapp/backend && npm install && npm test'
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    sh '''
-                        cd demo-webapp/frontend
-                        npm install
-                        npm install --save-dev jest-junit
-                        mkdir -p junit-reports
-                        npm run test:ci -- --watchAll=false
-                    '''
-                }
+                sh '''
+                    cd demo-webapp/frontend
+                    npm install
+                    npm install --save-dev jest-junit
+                    mkdir -p junit-reports
+
+                    # Run tests and capture exit code
+                    npm run test:ci -- --watchAll=false
+                    TEST_EXIT_CODE=$?
+
+                    # Print test report contents for debugging
+                    echo "Frontend test report contents:"
+                    ls -la junit-reports/
+                    if [ -f junit-reports/junit.xml ]; then
+                        cat junit-reports/junit.xml
+                    else
+                        echo "ERROR: junit.xml not generated!"
+                    fi
+
+                    # Exit with the original test exit code
+                    exit $TEST_EXIT_CODE
+                '''
             }
             post {
                 always {
-                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                        junit(
-                            allowEmptyResults: true,
-                            testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml'
-                        )
-                    }
+                    junit(
+                        allowEmptyResults: false,
+                        testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml'
+                    )
                 }
             }
         }
@@ -77,43 +88,53 @@ pipeline {
                 }
             }
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    sh '''
-                        # Install Chromium and other dependencies for Playwright
-                        apk add --no-cache chromium xvfb dbus ttf-freefont fontconfig
+                sh '''
+                    # Install Chromium and other dependencies for Playwright
+                    apk add --no-cache chromium xvfb dbus ttf-freefont fontconfig
 
-                        # Set environment variables for Playwright
-                        export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-                        export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
-                        export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+                    # Set environment variables for Playwright
+                    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+                    export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+                    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
-                        # Install Playwright without browser download
-                        cd demo-webapp && npm install && npm install -D @playwright/test
+                    # Install Playwright without browser download
+                    cd demo-webapp && npm install && npm install -D @playwright/test
 
-                        # Create directory for Playwright JUnit reports
-                        mkdir -p demo-webapp/playwright-junit
+                    # Create directory for Playwright JUnit reports
+                    mkdir -p demo-webapp/playwright-junit
 
-                        # Run tests with system Chromium
-                        cd demo-webapp && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium || echo "Playwright tests failed but continuing build"
-                    '''
-                }
+                    # Run tests with system Chromium and capture exit code
+                    cd demo-webapp
+                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --browser=chromium
+                    TEST_EXIT_CODE=$?
+
+                    # Print test report contents for debugging
+                    echo "Playwright test report contents:"
+                    ls -la playwright-junit/
+                    if [ -f playwright-junit/results.xml ]; then
+                        cat playwright-junit/results.xml
+                    else
+                        echo "ERROR: results.xml not generated!"
+                    fi
+
+                    # Fail the build if tests fail
+                    exit $TEST_EXIT_CODE
+                '''
             }
             post {
                 always {
-                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                        junit(
-                            allowEmptyResults: true,
-                            testResults: 'demo-webapp/playwright-junit/results.xml'
-                        )
-                    }
+                    junit(
+                        allowEmptyResults: false,
+                        testResults: 'demo-webapp/playwright-junit/results.xml'
+                    )
                 }
             }
         }
 
         stage('Build') {
-            // Continue with build even if tests failed
+            // Only proceed if tests pass
             when {
-                expression { return true }
+                expression { return currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
             }
             steps {
                 sh 'ls -la'
@@ -170,14 +191,12 @@ pipeline {
             echo "Build completed for branch: ${env.BRANCH_TO_BUILD}"
 
             // Publish all test reports in one place
-            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                junit(
-                    allowEmptyResults: true,
-                    testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml, demo-webapp/playwright-junit/results.xml',
-                    skipPublishingChecks: false,
-                    skipMarkingBuildUnstable: false
-                )
-            }
+            junit(
+                allowEmptyResults: false,
+                testResults: 'demo-webapp/backend/junit.xml, demo-webapp/frontend/junit-reports/junit.xml, demo-webapp/playwright-junit/results.xml',
+                skipPublishingChecks: false,
+                skipMarkingBuildUnstable: false
+            )
         }
     }
 }
