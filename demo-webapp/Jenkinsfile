@@ -160,8 +160,11 @@ pipeline {
                     # Create directory for Playwright JUnit reports
                     mkdir -p playwright-junit
 
+                    # Install Playwright browsers
+                    npx playwright install chromium
+
                     # Run tests against staging environment
-                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test
+                    npx playwright test
                     TEST_EXIT_CODE=$?
 
                     # Print test report contents for debugging
@@ -274,7 +277,12 @@ pipeline {
                     # Run smoke tests against production
                     cd demo-webapp
                     mkdir -p playwright-junit
-                    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright test --grep="@smoke"
+
+                    # Install Playwright browsers
+                    npx playwright install chromium
+
+                    # Run smoke tests against production
+                    npx playwright test --grep="@smoke"
                 '''
             }
         }
