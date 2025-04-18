@@ -164,7 +164,7 @@ pipeline {
                     npx playwright install chromium
 
                     # Run tests against staging environment
-                    npx playwright test
+                    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser npx playwright test
                     TEST_EXIT_CODE=$?
 
                     # Print test report contents for debugging
@@ -282,7 +282,7 @@ pipeline {
                     npx playwright install chromium
 
                     # Run smoke tests against production
-                    npx playwright test --grep="@smoke"
+                    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser npx playwright test --grep="@smoke"
                 '''
             }
         }
