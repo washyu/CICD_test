@@ -19,7 +19,7 @@ module.exports = defineConfig({
     ['junit', { outputFile: 'playwright-junit/results.xml' }]
   ],
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: process.env.BASE_URL || 'http://localhost:8080',
     actionTimeout: 0,
     trace: 'on-first-retry',
   },
@@ -31,9 +31,12 @@ module.exports = defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'npm run start',
-    port: 8080,
-    reuseExistingServer: !process.env.CI,
-  },
+  // Only start a web server if we're not testing against a deployed environment
+  ...(process.env.BASE_URL ? {} : {
+    webServer: {
+      command: 'npm run start',
+      port: 8080,
+      reuseExistingServer: !process.env.CI,
+    }
+  }),
 });

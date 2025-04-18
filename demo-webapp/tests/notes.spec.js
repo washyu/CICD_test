@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Notes Application', () => {
-  test('should display the notes app title', async ({ page }) => {
+  test('should display the notes app title @smoke', async ({ page }) => {
     await page.goto('/');
 
     // Check if the title is visible
