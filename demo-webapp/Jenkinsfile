@@ -167,6 +167,11 @@ pipeline {
                     export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
                     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
                     export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+
+                    # Create symlink for headless shell
+                    mkdir -p /usr/bin/chromium_headless_shell-1169/chrome-linux
+                    ln -sf /usr/bin/chromium-browser /usr/bin/chromium_headless_shell-1169/chrome-linux/headless_shell
+
                     npx playwright test
                     TEST_EXIT_CODE=$?
 
@@ -288,6 +293,11 @@ pipeline {
                     export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
                     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
                     export PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+
+                    # Create symlink for headless shell
+                    mkdir -p /usr/bin/chromium_headless_shell-1169/chrome-linux
+                    ln -sf /usr/bin/chromium-browser /usr/bin/chromium_headless_shell-1169/chrome-linux/headless_shell
+
                     npx playwright test --grep="@smoke"
                 '''
             }
